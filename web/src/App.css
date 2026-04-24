@@ -1,0 +1,279 @@
+:root {
+  --bg: #0b0c0e;
+  --fg: #e6e6e6;
+  --mut: #8a8f9a;
+  --card: #14151a;
+  --border: #2a2d35;
+  --acc: #e85d32;
+  --ok: #4ecf8d;
+  font-synthesis: weight;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Georgia", serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+h1,
+h2 {
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  letter-spacing: 0.02em;
+}
+h1 {
+  font-size: 1.75rem;
+  color: #fff;
+}
+h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--mut);
+  margin-top: 1.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.app {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0.75rem 1rem 1.25rem;
+}
+
+.app__header {
+  margin-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+.app__ok {
+  color: var(--ok);
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  font-family: "Helvetica Neue", Helvetica, sans-serif;
+}
+
+.app__body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+@media (min-width: 860px) {
+  .app__body {
+    grid-template-columns: min(360px, 34vw) 1fr;
+  }
+}
+
+.app__side {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem 1.1rem;
+  font-size: 0.88rem;
+  font-family: "Helvetica Neue", Helvetica, system-ui, sans-serif;
+}
+.app__side label {
+  color: var(--mut);
+  font-size: 0.78rem;
+  margin-top: 0.35rem;
+  display: block;
+}
+.app__side input,
+.app__side select,
+.app__side .btn {
+  width: 100%;
+}
+.app__side .btn.sm {
+  width: auto;
+  min-width: 0;
+  flex: 1;
+}
+.formgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+}
+.btnrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.2rem;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: linear-gradient(180deg, #2b2c33, #1f2026);
+  color: var(--fg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0.2rem 0.6rem;
+  margin: 0.1rem 0 0.25rem;
+}
+.btn:hover:enabled {
+  border-color: var(--acc);
+  color: #fff;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn--file {
+  cursor: pointer;
+}
+input[type="number"] {
+  font-size: 0.85rem;
+  background: #0a0a0b;
+  border: 1px solid var(--border);
+  color: #ddd;
+  border-radius: 4px;
+  padding: 0.2rem 0.35rem;
+  font-family: ui-monospace, monospace;
+}
+input[type="color"] {
+  height: 2.2rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0;
+  background: #0a0a0b;
+}
+select.tool,
+select {
+  width: 100%;
+  background: #0a0a0b;
+  border: 1px solid var(--border);
+  color: #ddd;
+  border-radius: 4px;
+  font-size: 0.88rem;
+  padding: 0.35rem 0.4rem;
+  margin: 0.1rem 0 0.35rem;
+  font-family: inherit;
+}
+.ck {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #ccc;
+  margin: 0.25rem 0;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.app__main {
+  min-width: 0;
+}
+.canvasbox {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #080809;
+  aspect-ratio: 2 / 5;
+  max-height: 72dvh;
+  min-height: 200px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  touch-action: none;
+  overflow: hidden;
+}
+@media (min-width: 860px) {
+  .canvasbox {
+    max-height: 78dvh;
+    max-width: none;
+    aspect-ratio: 64/160;
+    margin: 0;
+  }
+}
+
+.editor-canvas {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.editor-canvas__layer {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.app__log {
+  margin-top: 1.25rem;
+  background: #060607;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  max-height: 8rem;
+  overflow: auto;
+}
+.app__log pre {
+  margin: 0;
+  white-space: pre-wrap;
+  color: #9ab;
+}
+
+.app__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  font-size: 1.1rem;
+  font-family: "Helvetica Neue", sans-serif;
+}
+
+.app__overlay-card {
+  min-width: min(420px, 88vw);
+  background: #0f1117;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+}
+
+.app__overlay-sub {
+  margin: 0.35rem 0 0.4rem;
+  font-size: 0.9rem;
+  color: var(--mut);
+}
+
+.app__progress {
+  width: 100%;
+  height: 12px;
+  border: 1px solid #3a3f49;
+  border-radius: 999px;
+  background: #181b21;
+  overflow: hidden;
+}
+
+.app__progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #db4f2f, #ffba59);
+  transition: width 120ms linear;
+}
+
+.app__progress-pct {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: #d7d7d7;
+  text-align: right;
+}

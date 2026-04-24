@@ -1,0 +1,7 @@
+.pio/
+web/node_modules/
+web/dist/
+web/.vite/
+*.pyc
+__pycache__/
+.DS_Store
