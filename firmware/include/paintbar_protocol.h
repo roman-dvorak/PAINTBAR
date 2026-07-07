@@ -51,6 +51,7 @@ struct PlaybackConfig {
   PlaybackMode playback_mode = PlaybackMode::kLoop;
   StartMode start_mode = StartMode::kAuto;
   uint32_t fixed_column_period_us = 20000;
+  uint8_t max_brightness = 128;
   bool auto_start_after_upload = true;
 };
 

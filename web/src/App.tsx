@@ -31,6 +31,7 @@ export default function App() {
   const [ledN, setLedN] = useState(160)
   const [colN, setColN] = useState(64)
   const [period, setPeriod] = useState(20_000)
+  const [maxBrightness, setMaxBrightness] = useState(128)
   const [periodM, setPeriodM] = useState("fixed")
   const [playM, setPlayM] = useState("loop")
   const [startM, setStartM] = useState("auto")
@@ -103,6 +104,7 @@ export default function App() {
       playback_mode: playM,
       start_mode: startM,
       fixed_column_period_us: period,
+      max_brightness: maxBrightness,
       auto_start_after_upload: auto,
     }
   }
@@ -132,6 +134,7 @@ export default function App() {
         setLedN(c.led_count)
         setColN(c.column_count)
         setPeriod(c.fixed_column_period_us)
+        setMaxBrightness(c.max_brightness ?? 128)
         setPeriodM(c.period_mode)
         setPlayM(c.playback_mode)
         setStartM(c.start_mode)
@@ -211,6 +214,17 @@ export default function App() {
               value={period}
               onChange={(e) => setPeriod(Math.max(1, +e.target.value || 1))}
             />
+            <label>Max. jas</label>
+            <div className="rangefield">
+              <input
+                type="range"
+                min={0}
+                max={255}
+                value={maxBrightness}
+                onChange={(e) => setMaxBrightness(Math.max(0, Math.min(255, +e.target.value || 0)))}
+              />
+              <span>{maxBrightness}</span>
+            </div>
             <label>Režim periody</label>
             <select value={periodM} onChange={(e) => setPeriodM(e.target.value)}>
               <option value="fixed">fixed</option>
@@ -255,6 +269,7 @@ export default function App() {
                   setLedN(c.led_count)
                   setColN(c.column_count)
                   setPeriod(c.fixed_column_period_us)
+                  setMaxBrightness(c.max_brightness ?? 128)
                   setPeriodM(c.period_mode)
                   setPlayM(c.playback_mode)
                   setStartM(c.start_mode)
@@ -308,6 +323,7 @@ export default function App() {
                 setLedN(c.led_count)
                 setColN(c.column_count)
                 setPeriod(c.fixed_column_period_us)
+                setMaxBrightness(c.max_brightness ?? 128)
                 setPeriodM(c.period_mode)
                 setPlayM(c.playback_mode)
                 setStartM(c.start_mode)

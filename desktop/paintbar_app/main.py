@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSlider,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
@@ -95,6 +96,8 @@ class MainWindow(QMainWindow):
         self._led_count = QSpinBox()
         self._column_count = QSpinBox()
         self._period_us = QSpinBox()
+        self._max_brightness = QSlider(Qt.Orientation.Horizontal)
+        self._max_brightness_value = QLabel("128")
         self._period_mode = QComboBox()
         self._playback_mode = QComboBox()
         self._start_mode = QComboBox()
@@ -156,6 +159,8 @@ class MainWindow(QMainWindow):
         self._column_count.setValue(64)
         self._period_us.setRange(1, 5_000_000)
         self._period_us.setValue(20_000)
+        self._max_brightness.setRange(0, 255)
+        self._max_brightness.setValue(128)
         self._period_mode.addItems(["fixed", "external"])
         self._playback_mode.addItems(["once", "loop", "ping_pong"])
         self._start_mode.addItems(["auto", "trigger"])
@@ -173,6 +178,10 @@ class MainWindow(QMainWindow):
         form.addRow("Počet LED", self._led_count)
         form.addRow("Počet sloupců", self._column_count)
         form.addRow("Perioda sloupce [us]", self._period_us)
+        brightness_row = QHBoxLayout()
+        brightness_row.addWidget(self._max_brightness)
+        brightness_row.addWidget(self._max_brightness_value)
+        form.addRow("Max. jas", brightness_row)
         form.addRow("Režim periody", self._period_mode)
         form.addRow("Přehrávání", self._playback_mode)
         form.addRow("Start", self._start_mode)
@@ -212,6 +221,7 @@ class MainWindow(QMainWindow):
             self._led_count,
             self._column_count,
             self._period_us,
+            self._max_brightness,
             self._period_mode,
             self._playback_mode,
             self._start_mode,
@@ -239,6 +249,7 @@ class MainWindow(QMainWindow):
         self._active_column.valueChanged.connect(self._on_active_column_changed)
         self._tool_selector.currentTextChanged.connect(self._editor.set_tool)
         self._preview_debounce_ms.valueChanged.connect(self._preview_timer.setInterval)
+        self._max_brightness.valueChanged.connect(lambda value: self._max_brightness_value.setText(str(value)))
         self._fixed_column.toggled.connect(self._on_fixed_column_toggled)
         self._draw_mode.toggled.connect(self._on_draw_mode_toggled)
         self._editor.bitmap_changed.connect(self._on_bitmap_changed)
@@ -364,8 +375,10 @@ class MainWindow(QMainWindow):
         with QSignalBlocker(self._led_count), QSignalBlocker(self._column_count):
             self._led_count.setValue(config.led_count)
             self._column_count.setValue(config.column_count)
-        with QSignalBlocker(self._period_us), QSignalBlocker(self._period_mode), QSignalBlocker(self._playback_mode), QSignalBlocker(self._start_mode):
+        with QSignalBlocker(self._period_us), QSignalBlocker(self._max_brightness), QSignalBlocker(self._period_mode), QSignalBlocker(self._playback_mode), QSignalBlocker(self._start_mode):
             self._period_us.setValue(config.fixed_column_period_us)
+            self._max_brightness.setValue(config.max_brightness)
+            self._max_brightness_value.setText(str(config.max_brightness))
             self._period_mode.setCurrentText(config.period_mode)
             self._playback_mode.setCurrentText(config.playback_mode)
             self._start_mode.setCurrentText(config.start_mode)
@@ -384,6 +397,7 @@ class MainWindow(QMainWindow):
             playback_mode=self._playback_mode.currentText(),
             start_mode=self._start_mode.currentText(),
             fixed_column_period_us=self._period_us.value(),
+            max_brightness=self._max_brightness.value(),
             auto_start_after_upload=auto_start_after_upload,
         )
 

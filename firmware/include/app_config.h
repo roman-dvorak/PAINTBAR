@@ -14,12 +14,12 @@ constexpr uint8_t kLedDataPin = D10;
 constexpr uint8_t kTriggerInputPin = 2;
 constexpr uint8_t kTriggerButtonPin = 1;
 
-constexpr uint16_t kDefaultLedCount = 160;
+constexpr uint16_t kDefaultLedCount = 320;
 constexpr uint16_t kDefaultColumnCount = 64;
-constexpr uint16_t kMaxLedCount = 256;
+constexpr uint16_t kMaxLedCount = 320;
 constexpr uint16_t kMaxColumnCount = 512;
 
-constexpr uint8_t kLedBrightness = 128;
+constexpr uint8_t kDefaultMaxBrightness = 128;
 constexpr uint32_t kBaudRate = 115200;
 constexpr uint32_t kDefaultColumnPeriodUs = 20000;
 constexpr uint32_t kDebounceUs = 5000;

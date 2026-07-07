@@ -43,6 +43,7 @@ void reset_config_to_defaults() {
   g_config.playback_mode = PlaybackMode::kLoop;
   g_config.start_mode = StartMode::kAuto;
   g_config.fixed_column_period_us = kDefaultColumnPeriodUs;
+  g_config.max_brightness = kDefaultMaxBrightness;
   g_config.auto_start_after_upload = true;
 }
 
@@ -72,6 +73,7 @@ String config_to_json() {
   json += "\"start_mode\":\"" + String(g_config.start_mode == StartMode::kAuto ? "auto" : "trigger") +
           "\",";
   json += "\"fixed_column_period_us\":" + String(g_config.fixed_column_period_us) + ",";
+  json += "\"max_brightness\":" + String(g_config.max_brightness) + ",";
   json += "\"auto_start_after_upload\":" + bool_to_json(g_config.auto_start_after_upload);
   json += "}";
   return json;
@@ -148,6 +150,10 @@ bool sanitize_config() {
     g_config.fixed_column_period_us = kDefaultColumnPeriodUs;
     changed = true;
   }
+  if (g_config.max_brightness > 255) {
+    g_config.max_brightness = kDefaultMaxBrightness;
+    changed = true;
+  }
 
   return changed;
 }
@@ -190,6 +196,9 @@ bool load_config_from_flash() {
   }
   if (extract_unsigned(json, "fixed_column_period_us", value)) {
     g_config.fixed_column_period_us = std::max<uint32_t>(1, value);
+  }
+  if (extract_unsigned(json, "max_brightness", value)) {
+    g_config.max_brightness = std::min<uint32_t>(value, 255);
   }
   if (extract_string(json, "period_mode", text)) {
     g_config.period_mode = text == "external" ? PeriodMode::kExternal : PeriodMode::kFixed;
@@ -286,6 +295,11 @@ void clear_leds() {
   FastLED.show();
 }
 
+void apply_brightness() {
+  FastLED.setBrightness(g_config.max_brightness);
+  FastLED.show();
+}
+
 void show_startup_test() {
   clear_leds();
 
@@ -299,15 +313,7 @@ void show_startup_test() {
     }
   }
 
-  const CRGB fill_colors[] = {CRGB::Red, CRGB::Green, CRGB::Blue, CRGB::White, CRGB::Black};
-  for (const CRGB& color : fill_colors) {
-    fill_solid(leds, kDefaultLedCount, color);
-    for (uint16_t i = kDefaultLedCount; i < kMaxLedCount; ++i) {
-      leds[i] = CRGB::Black;
-    }
-    FastLED.show();
-    delay(60);
-  }
+  clear_leds();
 }
 
 void apply_column(uint16_t column) {
@@ -604,6 +610,9 @@ class ConfigCallbacks : public NimBLECharacteristicCallbacks {
     if (extract_unsigned(json, "fixed_column_period_us", value)) {
       g_config.fixed_column_period_us = std::max<uint32_t>(1, value);
     }
+    if (extract_unsigned(json, "max_brightness", value)) {
+      g_config.max_brightness = std::min<uint32_t>(value, 255);
+    }
     if (extract_string(json, "period_mode", text)) {
       g_config.period_mode = text == "external" ? PeriodMode::kExternal : PeriodMode::kFixed;
     }
@@ -624,6 +633,7 @@ class ConfigCallbacks : public NimBLECharacteristicCallbacks {
     }
 
     sanitize_config();
+    apply_brightness();
     save_config_to_flash();
     characteristic->setValue(to_std_string(config_to_json()));
     publish_status();
@@ -809,7 +819,7 @@ void setup() {
   reset_config_to_defaults();
 
   FastLED.addLeds<WS2812B, kLedDataPin, GRB>(leds, kMaxLedCount);
-  FastLED.setBrightness(kLedBrightness);
+  FastLED.setBrightness(g_config.max_brightness);
   clear_leds();
   show_startup_test();
 
@@ -820,6 +830,7 @@ void setup() {
   } else if (sanitize_config()) {
     save_config_to_flash();
   }
+  apply_brightness();
   setup_ble();
 
   if (g_config.start_mode == StartMode::kAuto) {
