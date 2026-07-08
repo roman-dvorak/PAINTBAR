@@ -41,6 +41,7 @@ class PlaybackConfig:
     playback_mode: str = "loop"
     start_mode: str = "auto"
     trigger_button_mode: str = "one_shot"
+    idle_display_mode: str = "edge"
     fixed_column_period_us: int = 20_000
     max_brightness: int = 128
     auto_start_after_upload: bool = True

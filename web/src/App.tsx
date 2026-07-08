@@ -49,6 +49,8 @@ export default function App() {
   const [playM, setPlayM] = useState("loop")
   const [startM, setStartM] = useState("auto")
   const [triggerButtonMode, setTriggerButtonMode] = useState("one_shot")
+  const [idleDisplayMode, setIdleDisplayMode] = useState("edge")
+  const [solidColor, setSolidColor] = useState("#ffffff")
   const initializedRef = useRef(false)
   const liveApplyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -120,6 +122,7 @@ export default function App() {
       playback_mode: playM,
       start_mode: startM,
       trigger_button_mode: triggerButtonMode,
+      idle_display_mode: idleDisplayMode,
       fixed_column_period_us: period,
       max_brightness: Math.round((brightnessPct / 100) * 255),
       auto_start_after_upload: auto,
@@ -139,7 +142,18 @@ export default function App() {
       if (liveApplyTimer.current) clearTimeout(liveApplyTimer.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ledN, colN, period, brightnessPct, periodM, playM, startM, triggerButtonMode, connected])
+  }, [
+    ledN,
+    colN,
+    period,
+    brightnessPct,
+    periodM,
+    playM,
+    startM,
+    triggerButtonMode,
+    idleDisplayMode,
+    connected,
+  ])
 
   const durationMs = useMemo(() => (colN * period) / 1000, [colN, period])
 
@@ -173,6 +187,7 @@ export default function App() {
         setPlayM(c.playback_mode)
         setStartM(c.start_mode)
         setTriggerButtonMode(c.trigger_button_mode ?? "one_shot")
+        setIdleDisplayMode(c.idle_display_mode ?? "edge")
         fr.current.resize(c.column_count, c.led_count)
         bump()
       }
@@ -285,6 +300,11 @@ export default function App() {
               <option value="hold">hold</option>
               <option value="reset">reset</option>
             </select>
+            <label>Klidový stav (start/konec)</label>
+            <select value={idleDisplayMode} onChange={(e) => setIdleDisplayMode(e.target.value)}>
+              <option value="edge">první/poslední sloupec</option>
+              <option value="black">tma</option>
+            </select>
           </div>
           <p className="app__muted">
             {periodM === "external"
@@ -326,6 +346,7 @@ export default function App() {
                   setPlayM(c.playback_mode)
                   setStartM(c.start_mode)
                   setTriggerButtonMode(c.trigger_button_mode ?? "one_shot")
+                  setIdleDisplayMode(c.idle_display_mode ?? "edge")
                   fr.current.resize(c.column_count, c.led_count)
                   bump()
                   initializedRef.current = true
@@ -383,6 +404,7 @@ export default function App() {
                 setPlayM(c.playback_mode)
                 setStartM(c.start_mode)
                 setTriggerButtonMode(c.trigger_button_mode ?? "one_shot")
+                setIdleDisplayMode(c.idle_display_mode ?? "edge")
                 const got = await ble.current.downloadBitmap(c.column_count, c.led_count, onProgress)
                 fr.current = got
                 bump()
@@ -418,6 +440,33 @@ export default function App() {
               Trigger
             </button>
           </div>
+
+          <h2>Test barvy</h2>
+          <div className="btnrow">
+            <input
+              type="color"
+              value={solidColor}
+              onChange={(e) => setSolidColor(e.target.value)}
+            />
+            <button
+              className="btn sm"
+              type="button"
+              disabled={busy || !connected}
+              onClick={() =>
+                withBusy("Nastavuji barvu…", async () => {
+                  const r = parseInt(solidColor.slice(1, 3), 16)
+                  const g = parseInt(solidColor.slice(3, 5), 16)
+                  const b = parseInt(solidColor.slice(5, 7), 16)
+                  await ble.current.setSolidColor(r, g, b)
+                })
+              }
+            >
+              Nastavit barvu na celý pásek
+            </button>
+          </div>
+          <p className="app__muted">
+            Nedestruktivní — nepřepíše rozmalovaný motiv. Návrat k obrazu: Play/Trigger.
+          </p>
 
           <h2>Živý náhled</h2>
           <label className="ck">
@@ -534,6 +583,7 @@ export default function App() {
               setPlayM(cfg.playback_mode)
               setStartM(cfg.start_mode)
               setTriggerButtonMode(cfg.trigger_button_mode ?? "one_shot")
+              setIdleDisplayMode(cfg.idle_display_mode ?? "edge")
               setActiveCol(0)
               bump()
               initializedRef.current = true

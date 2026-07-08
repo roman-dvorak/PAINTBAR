@@ -17,6 +17,7 @@ CRGB leds[kMaxLedCount];
 PlaybackConfig g_config;
 RuntimeStatus g_status;
 std::vector<CRGB> g_bitmap;
+std::vector<uint8_t> g_bitmap_raw_cache;
 std::vector<uint8_t> g_upload_buffer;
 std::vector<uint8_t> g_preview_column_buffer;
 uint32_t g_upload_expected_bytes = 0;
@@ -44,9 +45,20 @@ void reset_config_to_defaults() {
   g_config.playback_mode = PlaybackMode::kLoop;
   g_config.start_mode = StartMode::kAuto;
   g_config.trigger_button_mode = TriggerButtonMode::kOneShot;
+  g_config.idle_display_mode = IdleDisplayMode::kEdgeColumn;
   g_config.fixed_column_period_us = kDefaultColumnPeriodUs;
   g_config.max_brightness = kDefaultMaxBrightness;
   g_config.auto_start_after_upload = true;
+}
+
+void rebuild_bitmap_raw_cache() {
+  g_bitmap_raw_cache.clear();
+  g_bitmap_raw_cache.reserve(g_bitmap.size() * 3);
+  for (const CRGB& pixel : g_bitmap) {
+    g_bitmap_raw_cache.push_back(pixel.r);
+    g_bitmap_raw_cache.push_back(pixel.g);
+    g_bitmap_raw_cache.push_back(pixel.b);
+  }
 }
 
 String bool_to_json(bool value) { return value ? "true" : "false"; }
@@ -87,6 +99,8 @@ String config_to_json() {
       break;
   }
   json += "\",";
+  json += "\"idle_display_mode\":\"" +
+          String(g_config.idle_display_mode == IdleDisplayMode::kBlack ? "black" : "edge") + "\",";
   json += "\"fixed_column_period_us\":" + String(g_config.fixed_column_period_us) + ",";
   json += "\"max_brightness\":" + String(g_config.max_brightness) + ",";
   json += "\"auto_start_after_upload\":" + bool_to_json(g_config.auto_start_after_upload);
@@ -235,6 +249,9 @@ bool load_config_from_flash() {
       g_config.trigger_button_mode = TriggerButtonMode::kOneShot;
     }
   }
+  if (extract_string(json, "idle_display_mode", text)) {
+    g_config.idle_display_mode = text == "black" ? IdleDisplayMode::kBlack : IdleDisplayMode::kEdgeColumn;
+  }
   if (extract_bool(json, "auto_start_after_upload", flag)) {
     g_config.auto_start_after_upload = flag;
   }
@@ -291,6 +308,7 @@ bool load_bitmap_from_flash() {
   }
 
   file.close();
+  rebuild_bitmap_raw_cache();
   return true;
 }
 
@@ -323,13 +341,10 @@ void apply_brightness() {
 void show_startup_test() {
   clear_leds();
 
-  const CRGB chase_colors[] = {CRGB::Red, CRGB::Green, CRGB::Blue};
-  for (const CRGB& color : chase_colors) {
-    for (uint16_t i = 0; i < kDefaultLedCount; ++i) {
-      fill_solid(leds, kMaxLedCount, CRGB::Black);
-      leds[i] = color;
-      FastLED.show();
-    }
+  const CRGB flash_colors[] = {CRGB::Red, CRGB::Green, CRGB::Blue};
+  for (const CRGB& color : flash_colors) {
+    fill_solid(leds, kMaxLedCount, color);
+    FastLED.show();
   }
 
   clear_leds();
@@ -382,6 +397,12 @@ void advance_column() {
 
   if (g_config.playback_mode == PlaybackMode::kOnce) {
     if (g_status.current_column + 1 >= g_config.column_count) {
+      g_status.current_column = g_config.column_count - 1;
+      if (g_config.idle_display_mode == IdleDisplayMode::kBlack) {
+        clear_leds();
+      } else {
+        apply_column(g_status.current_column);
+      }
       stop_playback();
       return;
     }
@@ -540,6 +561,7 @@ void commit_upload() {
   g_status.upload_in_progress = false;
   g_upload_buffer.clear();
   g_upload_expected_bytes = 0;
+  rebuild_bitmap_raw_cache();
   save_config_to_flash();
   save_bitmap_to_flash();
   reset_playback();
@@ -593,6 +615,7 @@ void apply_preview_column() {
 
   stop_playback();
   g_status.current_column = g_preview_target_column;
+  rebuild_bitmap_raw_cache();
   save_bitmap_to_flash();
   apply_column(g_preview_target_column);
   publish_status();
@@ -604,15 +627,7 @@ void notify_download_chunk(uint32_t offset, uint16_t length) {
     return;
   }
 
-  std::vector<uint8_t> raw;
-  raw.reserve(g_bitmap.size() * 3);
-  for (const CRGB& pixel : g_bitmap) {
-    raw.push_back(pixel.r);
-    raw.push_back(pixel.g);
-    raw.push_back(pixel.b);
-  }
-
-  const uint32_t available = raw.size();
+  const uint32_t available = g_bitmap_raw_cache.size();
   if (offset >= available) {
     const uint8_t end_payload[1] = {static_cast<uint8_t>(BitmapCommand::kDownloadEnd)};
     g_bitmap_char->setValue(end_payload, sizeof(end_payload));
@@ -630,7 +645,8 @@ void notify_download_chunk(uint32_t offset, uint16_t length) {
   payload.push_back(static_cast<uint8_t>((offset >> 24) & 0xff));
   payload.push_back(static_cast<uint8_t>(chunk_len & 0xff));
   payload.push_back(static_cast<uint8_t>((chunk_len >> 8) & 0xff));
-  payload.insert(payload.end(), raw.begin() + offset, raw.begin() + offset + chunk_len);
+  payload.insert(
+      payload.end(), g_bitmap_raw_cache.begin() + offset, g_bitmap_raw_cache.begin() + offset + chunk_len);
   g_bitmap_char->setValue(payload.data(), payload.size());
   g_bitmap_char->notify();
 
@@ -688,6 +704,10 @@ class ConfigCallbacks : public NimBLECharacteristicCallbacks {
         g_config.trigger_button_mode = TriggerButtonMode::kOneShot;
       }
     }
+    if (extract_string(json, "idle_display_mode", text)) {
+      g_config.idle_display_mode =
+          text == "black" ? IdleDisplayMode::kBlack : IdleDisplayMode::kEdgeColumn;
+    }
     if (extract_bool(json, "auto_start_after_upload", flag)) {
       g_config.auto_start_after_upload = flag;
     }
@@ -728,6 +748,17 @@ class ControlCallbacks : public NimBLECharacteristicCallbacks {
         break;
       case ControlCommand::kRequestStatus:
         publish_status();
+        break;
+      case ControlCommand::kSetSolidColor:
+        if (value.size() < 4) {
+          break;
+        }
+        stop_playback();
+        fill_solid(
+            leds, kMaxLedCount,
+            CRGB(static_cast<uint8_t>(value[1]), static_cast<uint8_t>(value[2]),
+                 static_cast<uint8_t>(value[3])));
+        FastLED.show();
         break;
       case ControlCommand::kStatus:
         break;
@@ -839,6 +870,7 @@ void init_bitmap() {
       g_bitmap[index] = CHSV(hue, 255, ((x + y) % 2) ? 180 : 40);
     }
   }
+  rebuild_bitmap_raw_cache();
 }
 
 void setup_ble() {
@@ -852,7 +884,8 @@ void setup_ble() {
   g_control_char = service->createCharacteristic(
       kControlCharUuid, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
   g_bitmap_char = service->createCharacteristic(
-      kBitmapCharUuid, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+      kBitmapCharUuid,
+      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR | NIMBLE_PROPERTY::NOTIFY);
 
   g_config_char->setCallbacks(new ConfigCallbacks());
   g_control_char->setCallbacks(new ControlCallbacks());
@@ -901,6 +934,8 @@ void setup() {
 
   if (g_config.start_mode == StartMode::kAuto) {
     start_playback();
+  } else if (g_config.idle_display_mode == IdleDisplayMode::kBlack) {
+    clear_leds();
   } else {
     apply_column(0);
   }

@@ -26,6 +26,11 @@ enum class TriggerButtonMode : uint8_t {
   kReset = 2,
 };
 
+enum class IdleDisplayMode : uint8_t {
+  kBlack = 0,
+  kEdgeColumn = 1,
+};
+
 enum class BitmapCommand : uint8_t {
   kStartUpload = 0x01,
   kData = 0x02,
@@ -47,6 +52,7 @@ enum class ControlCommand : uint8_t {
   kRestart = 0x03,
   kTrigger = 0x04,
   kRequestStatus = 0x05,
+  kSetSolidColor = 0x06,
   kStatus = 0x80,
 };
 
@@ -57,6 +63,7 @@ struct PlaybackConfig {
   PlaybackMode playback_mode = PlaybackMode::kLoop;
   StartMode start_mode = StartMode::kAuto;
   TriggerButtonMode trigger_button_mode = TriggerButtonMode::kOneShot;
+  IdleDisplayMode idle_display_mode = IdleDisplayMode::kEdgeColumn;
   uint32_t fixed_column_period_us = 20000;
   uint8_t max_brightness = 128;
   bool auto_start_after_upload = true;

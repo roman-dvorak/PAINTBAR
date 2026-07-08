@@ -5,6 +5,7 @@ import {
   CONTROL_CHAR_UUID,
   DEFAULT_CHUNK_SIZE,
   BitmapCommand,
+  ControlCommand,
   SERVICE_UUID,
   type ControlCommandId,
   type PlaybackConfig,
@@ -20,6 +21,15 @@ async function gattWrite(char: BluetoothRemoteGATTCharacteristic, data: ArrayBuf
     await char.writeValueWithoutResponse(new Uint8Array(data))
   } else {
     throw new Error("Char nemá write ani writeWithoutResponse")
+  }
+}
+
+/** Pro datové chunky: bez ATT write-response (BLE linková vrstva stále doručení garantuje). */
+async function gattWriteNoResponse(char: BluetoothRemoteGATTCharacteristic, data: ArrayBuffer) {
+  if (char.properties.writeWithoutResponse) {
+    await char.writeValueWithoutResponse(new Uint8Array(data))
+  } else {
+    await char.writeValueWithResponse(data)
   }
 }
 
@@ -117,6 +127,12 @@ export class PaintbarBle {
     await gattWrite(c, new Uint8Array([cmd]).buffer)
   }
 
+  async setSolidColor(r: number, g: number, b: number) {
+    const c = this.controlChar
+    if (!c) throw new Error("Nejste připojeni")
+    await gattWrite(c, new Uint8Array([ControlCommand.SET_SOLID_COLOR, r, g, b]).buffer)
+  }
+
   async uploadBitmap(frame: BitmapFrame, onProgress?: ProgressCallback) {
     const c = this.bitmapChar
     if (!c) throw new Error("Nejste připojeni")
@@ -134,19 +150,77 @@ export class PaintbarBle {
     v.setUint32(5, le32(payload.length), true)
     await gattWrite(c, start.buffer)
 
-    for (let offset = 0; offset < payload.length; offset += chunkSize) {
-      const part = payload.subarray(offset, offset + chunkSize)
-      const p = new Uint8Array(1 + 4 + part.length)
-      p[0] = BitmapCommand.DATA
-      new DataView(p.buffer).setUint32(1, le32(offset), true)
-      p.set(part, 5)
-      await gattWrite(c, p.buffer)
-      const pct = ((offset + part.length) * 100 / Math.max(1, payload.length)) | 0
-      if (pct % 25 === 0 && offset > 0) this.onStatus("Upload: " + pct + " %")
-      onProgress?.(pct)
+    // Datové chunky jdou bez ATT write-response (viz gattWriteNoResponse) — aby se
+    // nezahltila fronta na desce, čekáme jen na dávkové potvrzení po WINDOW chuncích,
+    // ne po každém jednom.
+    const WINDOW = 4
+    let chunksSent = 0
+    let chunksAcked = 0
+    let ackWaiter: (() => void) | null = null
+    let errWaiter: ((e: Error) => void) | null = null
+
+    const onAck = (e: Event) => {
+      const t = (e.target as BluetoothRemoteGATTCharacteristic).value
+      if (!t || t.byteLength < 1) return
+      const op = t.getUint8(0)
+      if (op === BitmapCommand.ACK) {
+        chunksAcked++
+        ackWaiter?.()
+        ackWaiter = null
+      } else if (op === BitmapCommand.ERROR) {
+        const code = t.byteLength > 1 ? t.getUint8(1) : -1
+        this.onStatus("Chyba uploadu (kód " + code + ")")
+        errWaiter?.(new Error("Upload: deska vrátila chybu (kód " + code + ")"))
+        errWaiter = null
+      }
     }
-    await gattWrite(c, new Uint8Array([BitmapCommand.COMMIT]).buffer)
-    await new Promise((r) => setTimeout(r, 200))
+    this.notifyHandler = onAck
+    c.addEventListener("characteristicvaluechanged", onAck)
+    await c.startNotifications()
+
+    const waitForAck = () =>
+      new Promise<void>((resolve, reject) => {
+        const tid = setTimeout(() => reject(new Error("Upload: timeout čekání na potvrzení")), 3000)
+        ackWaiter = () => {
+          clearTimeout(tid)
+          resolve()
+        }
+        errWaiter = (e) => {
+          clearTimeout(tid)
+          reject(e)
+        }
+      })
+
+    try {
+      for (let offset = 0; offset < payload.length; offset += chunkSize) {
+        if (chunksSent - chunksAcked >= WINDOW) {
+          await waitForAck()
+        }
+        const part = payload.subarray(offset, offset + chunkSize)
+        const p = new Uint8Array(1 + 4 + part.length)
+        p[0] = BitmapCommand.DATA
+        new DataView(p.buffer).setUint32(1, le32(offset), true)
+        p.set(part, 5)
+        await gattWriteNoResponse(c, p.buffer)
+        chunksSent++
+        const pct = ((offset + part.length) * 100 / Math.max(1, payload.length)) | 0
+        if (pct % 25 === 0 && offset > 0) this.onStatus("Upload: " + pct + " %")
+        onProgress?.(pct)
+      }
+      while (chunksAcked < chunksSent) {
+        await waitForAck()
+      }
+      await gattWrite(c, new Uint8Array([BitmapCommand.COMMIT]).buffer)
+      await waitForAck() // čeká na kAck po dokončení commit_upload() (zápis na flash)
+    } finally {
+      c.removeEventListener("characteristicvaluechanged", onAck)
+      this.notifyHandler = null
+      try {
+        await c.stopNotifications()
+      } catch {
+        /* */
+      }
+    }
     onProgress?.(100)
     this.onStatus("Bitmapa nahrána")
   }

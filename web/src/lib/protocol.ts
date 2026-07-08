@@ -3,7 +3,7 @@ export const CONFIG_CHAR_UUID = "6f65f4de-f8c0-4f77-8a31-8fa7516f1001"
 export const CONTROL_CHAR_UUID = "6f65f4de-f8c0-4f77-8a31-8fa7516f1002"
 export const BITMAP_CHAR_UUID = "6f65f4de-f8c0-4f77-8a31-8fa7516f1003"
 
-export const DEFAULT_CHUNK_SIZE = 180
+export const DEFAULT_CHUNK_SIZE = 237
 
 export const BitmapCommand = {
   START_UPLOAD: 0x01,
@@ -16,6 +16,8 @@ export const BitmapCommand = {
   APPLY_COLUMN_PREVIEW: 0x08,
   DOWNLOAD_CHUNK: 0x84,
   DOWNLOAD_END: 0x85,
+  ACK: 0x90,
+  ERROR: 0x91,
 } as const
 
 export const ControlCommand = {
@@ -24,6 +26,7 @@ export const ControlCommand = {
   RESTART: 0x03,
   TRIGGER: 0x04,
   REQUEST_STATUS: 0x05,
+  SET_SOLID_COLOR: 0x06,
 } as const
 
 export type ControlCommandId = (typeof ControlCommand)[keyof typeof ControlCommand]
@@ -35,6 +38,7 @@ export type PlaybackConfig = {
   playback_mode: "once" | "loop" | "ping_pong" | string
   start_mode: "auto" | "trigger" | string
   trigger_button_mode: "one_shot" | "hold" | "reset" | string
+  idle_display_mode: "black" | "edge" | string
   fixed_column_period_us: number
   max_brightness: number
   auto_start_after_upload: boolean
@@ -47,6 +51,7 @@ export const defaultPlaybackConfig = (): PlaybackConfig => ({
   playback_mode: "loop",
   start_mode: "auto",
   trigger_button_mode: "one_shot",
+  idle_display_mode: "edge",
   fixed_column_period_us: 20_000,
   max_brightness: 128,
   auto_start_after_upload: true,
