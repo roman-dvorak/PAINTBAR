@@ -64,7 +64,15 @@ Výchozí piny v [firmware/include/app_config.h](/home/roman/repos/astrometers/P
 - externí trigger: `D1 / GPIO2`
 - trigger tlačítko: `D0 / GPIO1`
 
-Aktuálně firmware trigger vstup ani trigger tlačítko nepoužívá a běží v časovaném režimu bez externího spouštění. Piny `D1` a `D0` jsou zatím jen rezervované pro pozdější rozšíření.
+Oba piny jsou zapojené jako aktivní-low s interním pull-upem (spínač/senzor stahuje pin na GND při aktivaci).
+
+Externí trigger (`D1`) měří periodu mezi hranami a v režimu `period_mode=external`/`start_mode=trigger` slouží ke spouštění přehrávání a odvození periody sloupce, stejně jako dosud.
+
+Trigger tlačítko (`D0`) má tři konfigurovatelné režimy (nastavitelné z webového UI, pole `trigger_button_mode`):
+
+- `one_shot` — stisk spustí/restartuje přehrávání
+- `hold` — přehrávání běží jen po dobu držení tlačítka
+- `reset` — stisk vrátí přehrávání na první sloupec
 
 Po bootu firmware spustí diagnostický LED test:
 

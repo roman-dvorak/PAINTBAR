@@ -28,6 +28,7 @@ volatile uint32_t g_last_trigger_edge_us = 0;
 volatile uint32_t g_trigger_period_us = 0;
 volatile bool g_trigger_seen = false;
 volatile bool g_trigger_button_seen = false;
+volatile bool g_trigger_button_released_seen = false;
 
 NimBLECharacteristic* g_config_char = nullptr;
 NimBLECharacteristic* g_control_char = nullptr;
@@ -42,6 +43,7 @@ void reset_config_to_defaults() {
   g_config.period_mode = PeriodMode::kFixed;
   g_config.playback_mode = PlaybackMode::kLoop;
   g_config.start_mode = StartMode::kAuto;
+  g_config.trigger_button_mode = TriggerButtonMode::kOneShot;
   g_config.fixed_column_period_us = kDefaultColumnPeriodUs;
   g_config.max_brightness = kDefaultMaxBrightness;
   g_config.auto_start_after_upload = true;
@@ -72,6 +74,19 @@ String config_to_json() {
   json += "\",";
   json += "\"start_mode\":\"" + String(g_config.start_mode == StartMode::kAuto ? "auto" : "trigger") +
           "\",";
+  json += "\"trigger_button_mode\":\"";
+  switch (g_config.trigger_button_mode) {
+    case TriggerButtonMode::kHoldToPlay:
+      json += "hold";
+      break;
+    case TriggerButtonMode::kReset:
+      json += "reset";
+      break;
+    case TriggerButtonMode::kOneShot:
+      json += "one_shot";
+      break;
+  }
+  json += "\",";
   json += "\"fixed_column_period_us\":" + String(g_config.fixed_column_period_us) + ",";
   json += "\"max_brightness\":" + String(g_config.max_brightness) + ",";
   json += "\"auto_start_after_upload\":" + bool_to_json(g_config.auto_start_after_upload);
@@ -146,10 +161,6 @@ bool sanitize_config() {
     g_config.column_count = kDefaultColumnCount;
     changed = true;
   }
-  if (g_config.fixed_column_period_us == 0) {
-    g_config.fixed_column_period_us = kDefaultColumnPeriodUs;
-    changed = true;
-  }
   if (g_config.max_brightness > 255) {
     g_config.max_brightness = kDefaultMaxBrightness;
     changed = true;
@@ -195,7 +206,7 @@ bool load_config_from_flash() {
     g_config.column_count = std::min<uint32_t>(value, kMaxColumnCount);
   }
   if (extract_unsigned(json, "fixed_column_period_us", value)) {
-    g_config.fixed_column_period_us = std::max<uint32_t>(1, value);
+    g_config.fixed_column_period_us = value;
   }
   if (extract_unsigned(json, "max_brightness", value)) {
     g_config.max_brightness = std::min<uint32_t>(value, 255);
@@ -214,6 +225,15 @@ bool load_config_from_flash() {
   }
   if (extract_string(json, "start_mode", text)) {
     g_config.start_mode = text == "trigger" ? StartMode::kTrigger : StartMode::kAuto;
+  }
+  if (extract_string(json, "trigger_button_mode", text)) {
+    if (text == "hold") {
+      g_config.trigger_button_mode = TriggerButtonMode::kHoldToPlay;
+    } else if (text == "reset") {
+      g_config.trigger_button_mode = TriggerButtonMode::kReset;
+    } else {
+      g_config.trigger_button_mode = TriggerButtonMode::kOneShot;
+    }
   }
   if (extract_bool(json, "auto_start_after_upload", flag)) {
     g_config.auto_start_after_upload = flag;
@@ -309,7 +329,6 @@ void show_startup_test() {
       fill_solid(leds, kMaxLedCount, CRGB::Black);
       leds[i] = color;
       FastLED.show();
-      delay(12);
     }
   }
 
@@ -406,28 +425,60 @@ void IRAM_ATTR on_trigger_edge() {
   g_trigger_seen = true;
 }
 
-void IRAM_ATTR on_trigger_button() { g_trigger_button_seen = true; }
+void IRAM_ATTR on_trigger_button() {
+  static uint32_t last_us = 0;
+  const uint32_t now = micros();
+  if (now - last_us < kDebounceUs) {
+    return;
+  }
+  last_us = now;
+  if (digitalRead(kTriggerButtonPin) == LOW) {
+    g_trigger_button_seen = true;
+  } else {
+    g_trigger_button_released_seen = true;
+  }
+}
 
 void handle_trigger_event() {
-  if (!(g_trigger_seen || g_trigger_button_seen)) {
+  if (!(g_trigger_seen || g_trigger_button_seen || g_trigger_button_released_seen)) {
     return;
   }
 
   noInterrupts();
   const bool trigger_seen = g_trigger_seen;
   const bool button_seen = g_trigger_button_seen;
+  const bool button_released_seen = g_trigger_button_released_seen;
   g_trigger_seen = false;
   g_trigger_button_seen = false;
+  g_trigger_button_released_seen = false;
   interrupts();
 
-  if (!trigger_seen && !button_seen) {
-    return;
+  if (trigger_seen) {
+    if (g_config.start_mode == StartMode::kTrigger) {
+      start_playback();
+    } else if (g_status.playing && g_config.period_mode == PeriodMode::kExternal) {
+      g_last_column_advance_us = micros();
+    }
   }
 
-  if (g_config.start_mode == StartMode::kTrigger) {
-    start_playback();
-  } else if (g_status.playing && g_config.period_mode == PeriodMode::kExternal) {
-    g_last_column_advance_us = micros();
+  if (button_seen) {
+    switch (g_config.trigger_button_mode) {
+      case TriggerButtonMode::kOneShot:
+        start_playback();
+        break;
+      case TriggerButtonMode::kHoldToPlay:
+        start_playback();
+        break;
+      case TriggerButtonMode::kReset:
+        reset_playback();
+        apply_column(0);
+        publish_status();
+        break;
+    }
+  }
+
+  if (button_released_seen && g_config.trigger_button_mode == TriggerButtonMode::kHoldToPlay) {
+    stop_playback();
   }
 }
 
@@ -608,7 +659,7 @@ class ConfigCallbacks : public NimBLECharacteristicCallbacks {
       g_config.column_count = std::min<uint32_t>(value, kMaxColumnCount);
     }
     if (extract_unsigned(json, "fixed_column_period_us", value)) {
-      g_config.fixed_column_period_us = std::max<uint32_t>(1, value);
+      g_config.fixed_column_period_us = value;
     }
     if (extract_unsigned(json, "max_brightness", value)) {
       g_config.max_brightness = std::min<uint32_t>(value, 255);
@@ -627,6 +678,15 @@ class ConfigCallbacks : public NimBLECharacteristicCallbacks {
     }
     if (extract_string(json, "start_mode", text)) {
       g_config.start_mode = text == "trigger" ? StartMode::kTrigger : StartMode::kAuto;
+    }
+    if (extract_string(json, "trigger_button_mode", text)) {
+      if (text == "hold") {
+        g_config.trigger_button_mode = TriggerButtonMode::kHoldToPlay;
+      } else if (text == "reset") {
+        g_config.trigger_button_mode = TriggerButtonMode::kReset;
+      } else {
+        g_config.trigger_button_mode = TriggerButtonMode::kOneShot;
+      }
     }
     if (extract_bool(json, "auto_start_after_upload", flag)) {
       g_config.auto_start_after_upload = flag;
@@ -821,7 +881,6 @@ void setup() {
   FastLED.addLeds<WS2812B, kLedDataPin, GRB>(leds, kMaxLedCount);
   FastLED.setBrightness(g_config.max_brightness);
   clear_leds();
-  show_startup_test();
 
   if (!load_config_from_flash() || !load_bitmap_from_flash()) {
     init_bitmap();
@@ -832,6 +891,13 @@ void setup() {
   }
   apply_brightness();
   setup_ble();
+
+  pinMode(kTriggerInputPin, INPUT_PULLUP);
+  pinMode(kTriggerButtonPin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(kTriggerInputPin), on_trigger_edge, FALLING);
+  attachInterrupt(digitalPinToInterrupt(kTriggerButtonPin), on_trigger_button, CHANGE);
+
+  show_startup_test();
 
   if (g_config.start_mode == StartMode::kAuto) {
     start_playback();

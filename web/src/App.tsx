@@ -1,10 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { EditorCanvas, type Tool, TOOLS } from "./components/EditorCanvas"
+import { Gallery } from "./components/Gallery"
 import { type PlaybackConfig, ControlCommand } from "./lib/protocol"
 import { BitmapFrame } from "./lib/bitmap"
 import { PaintbarBle } from "./lib/paintbarBle"
 import { bitmapToPngBlob, loadImageDataToFrame, triggerDownload } from "./lib/exportPng"
 import "./App.css"
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms)) return "?"
+  const totalMs = Math.max(0, Math.round(ms))
+  const s = Math.floor(totalMs / 1000)
+  const rem = totalMs % 1000
+  const mm = Math.floor(s / 60)
+  const ss = s % 60
+  return mm > 0
+    ? `${mm}:${String(ss).padStart(2, "0")}.${String(rem).padStart(3, "0")}`
+    : `${ss}.${String(rem).padStart(3, "0")} s`
+}
 
 function useFrame() {
   const ref = useRef<BitmapFrame>(new BitmapFrame(64, 160))
@@ -31,10 +44,13 @@ export default function App() {
   const [ledN, setLedN] = useState(160)
   const [colN, setColN] = useState(64)
   const [period, setPeriod] = useState(20_000)
-  const [maxBrightness, setMaxBrightness] = useState(128)
+  const [brightnessPct, setBrightnessPct] = useState(50)
   const [periodM, setPeriodM] = useState("fixed")
   const [playM, setPlayM] = useState("loop")
   const [startM, setStartM] = useState("auto")
+  const [triggerButtonMode, setTriggerButtonMode] = useState("one_shot")
+  const initializedRef = useRef(false)
+  const liveApplyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [subMsg, setMsg] = useState("")
   const [transferLabel, setTransferLabel] = useState("")
@@ -103,11 +119,29 @@ export default function App() {
       period_mode: periodM,
       playback_mode: playM,
       start_mode: startM,
+      trigger_button_mode: triggerButtonMode,
       fixed_column_period_us: period,
-      max_brightness: maxBrightness,
+      max_brightness: Math.round((brightnessPct / 100) * 255),
       auto_start_after_upload: auto,
     }
   }
+
+  useEffect(() => {
+    if (!initializedRef.current || !connected) return
+    if (liveApplyTimer.current) clearTimeout(liveApplyTimer.current)
+    liveApplyTimer.current = setTimeout(() => {
+      liveApplyTimer.current = null
+      ble.current
+        .writeConfig(toCfg(false))
+        .catch((e) => push("Živé nahrání parametrů selhalo: " + String(e)))
+    }, 300)
+    return () => {
+      if (liveApplyTimer.current) clearTimeout(liveApplyTimer.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ledN, colN, period, brightnessPct, periodM, playM, startM, triggerButtonMode, connected])
+
+  const durationMs = useMemo(() => (colN * period) / 1000, [colN, period])
 
   const schedulePreview = useCallback(() => {
     if (!drawLive || !ble.current.connected) return
@@ -126,25 +160,29 @@ export default function App() {
     withBusy("Připojování…", async () => {
       if (ble.current.connected) await ble.current.disconnect()
       setConnected(false)
+      initializedRef.current = false
       await ble.current.requestDevice()
       await ble.current.connect()
-      setConnected(true)
       const c = await ble.current.readConfig()
       if (c.led_count > 0 && c.column_count > 0) {
         setLedN(c.led_count)
         setColN(c.column_count)
         setPeriod(c.fixed_column_period_us)
-        setMaxBrightness(c.max_brightness ?? 128)
+        setBrightnessPct(Math.round(((c.max_brightness ?? 128) / 255) * 100))
         setPeriodM(c.period_mode)
         setPlayM(c.playback_mode)
         setStartM(c.start_mode)
+        setTriggerButtonMode(c.trigger_button_mode ?? "one_shot")
         fr.current.resize(c.column_count, c.led_count)
         bump()
       }
+      setConnected(true)
+      initializedRef.current = true
     })
 
   const onDisconnect = () =>
     withBusy("Odpojuji…", async () => {
+      initializedRef.current = false
       await ble.current.disconnect()
       setConnected(false)
     })
@@ -210,20 +248,20 @@ export default function App() {
             <label>Perioda sloupce (µs)</label>
             <input
               type="number"
-              min={1}
+              min={0}
               value={period}
-              onChange={(e) => setPeriod(Math.max(1, +e.target.value || 1))}
+              onChange={(e) => setPeriod(Math.max(0, +e.target.value || 0))}
             />
-            <label>Max. jas</label>
+            <label>Max. jas (%)</label>
             <div className="rangefield">
               <input
                 type="range"
                 min={0}
-                max={255}
-                value={maxBrightness}
-                onChange={(e) => setMaxBrightness(Math.max(0, Math.min(255, +e.target.value || 0)))}
+                max={100}
+                value={brightnessPct}
+                onChange={(e) => setBrightnessPct(Math.max(0, Math.min(100, +e.target.value || 0)))}
               />
-              <span>{maxBrightness}</span>
+              <span>{brightnessPct} %</span>
             </div>
             <label>Režim periody</label>
             <select value={periodM} onChange={(e) => setPeriodM(e.target.value)}>
@@ -241,7 +279,20 @@ export default function App() {
               <option value="auto">auto</option>
               <option value="trigger">trigger</option>
             </select>
+            <label>Tlačítko trigger</label>
+            <select value={triggerButtonMode} onChange={(e) => setTriggerButtonMode(e.target.value)}>
+              <option value="one_shot">one_shot</option>
+              <option value="hold">hold</option>
+              <option value="reset">reset</option>
+            </select>
           </div>
+          <p className="app__muted">
+            {periodM === "external"
+              ? "0 = nejrychlejší možný posun. Délka jednoho přehrání závisí na externím triggeru."
+              : `0 = nejrychlejší možný posun. Jedno přehrání: ${formatDuration(durationMs)}${
+                  playM === "ping_pong" ? ` (cyklus tam a zpět: ${formatDuration(durationMs * 2)})` : ""
+                }`}
+          </p>
           <div className="btnrow">
             <button
               className="btn sm"
@@ -266,15 +317,18 @@ export default function App() {
                     push("Deska vratila neplatnou konfiguraci")
                     return
                   }
+                  initializedRef.current = false
                   setLedN(c.led_count)
                   setColN(c.column_count)
                   setPeriod(c.fixed_column_period_us)
-                  setMaxBrightness(c.max_brightness ?? 128)
+                  setBrightnessPct(Math.round(((c.max_brightness ?? 128) / 255) * 100))
                   setPeriodM(c.period_mode)
                   setPlayM(c.playback_mode)
                   setStartM(c.start_mode)
+                  setTriggerButtonMode(c.trigger_button_mode ?? "one_shot")
                   fr.current.resize(c.column_count, c.led_count)
                   bump()
+                  initializedRef.current = true
                 })
               }
             >
@@ -320,16 +374,19 @@ export default function App() {
                   push("Deska vratila neplatnou konfiguraci")
                   return
                 }
+                initializedRef.current = false
                 setLedN(c.led_count)
                 setColN(c.column_count)
                 setPeriod(c.fixed_column_period_us)
-                setMaxBrightness(c.max_brightness ?? 128)
+                setBrightnessPct(Math.round(((c.max_brightness ?? 128) / 255) * 100))
                 setPeriodM(c.period_mode)
                 setPlayM(c.playback_mode)
                 setStartM(c.start_mode)
+                setTriggerButtonMode(c.trigger_button_mode ?? "one_shot")
                 const got = await ble.current.downloadBitmap(c.column_count, c.led_count, onProgress)
                 fr.current = got
                 bump()
+                initializedRef.current = true
               })
             }
           >
@@ -461,6 +518,27 @@ export default function App() {
           >
             Použít rozměry
           </button>
+
+          <Gallery
+            currentConfig={() => toCfg(false)}
+            currentFrame={() => fr.current}
+            push={push}
+            onLoad={(cfg, frame) => {
+              initializedRef.current = false
+              fr.current = frame
+              setLedN(cfg.led_count)
+              setColN(cfg.column_count)
+              setPeriod(cfg.fixed_column_period_us)
+              setBrightnessPct(Math.round(((cfg.max_brightness ?? 128) / 255) * 100))
+              setPeriodM(cfg.period_mode)
+              setPlayM(cfg.playback_mode)
+              setStartM(cfg.start_mode)
+              setTriggerButtonMode(cfg.trigger_button_mode ?? "one_shot")
+              setActiveCol(0)
+              bump()
+              initializedRef.current = true
+            }}
+          />
         </section>
         <section className="app__main">
           <div className="canvasbox">

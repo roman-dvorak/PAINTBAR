@@ -6,10 +6,11 @@ namespace paintbar {
 
 // XIAO ESP32-S3 defaults:
 // - WS2812B data: D10 / GPIO9
-// - external trigger: D1 / GPIO2
+// - external trigger (sensor): D1 / GPIO2
 // - trigger button: D0 / GPIO1
 //
-// Trigger input and trigger button are currently reserved only for future use.
+// Both trigger input and trigger button are wired as active-low with
+// INPUT_PULLUP (button/sensor pulls the pin to GND when active).
 constexpr uint8_t kLedDataPin = D10;
 constexpr uint8_t kTriggerInputPin = 2;
 constexpr uint8_t kTriggerButtonPin = 1;

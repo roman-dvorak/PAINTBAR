@@ -189,6 +189,45 @@ select {
   font-size: 0.85rem;
   cursor: pointer;
 }
+.app__muted {
+  color: var(--mut);
+  font-size: 0.78rem;
+  margin: 0.2rem 0 0.6rem;
+}
+.gallery__list {
+  list-style: none;
+  margin: 0.3rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.gallery__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem;
+}
+.gallery__thumb {
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+  image-rendering: pixelated;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #0a0a0b;
+  flex-shrink: 0;
+}
+.gallery__name {
+  flex: 1;
+  font-size: 0.82rem;
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .app__main {
   min-width: 0;

@@ -40,6 +40,7 @@ class PlaybackConfig:
     period_mode: str = "fixed"
     playback_mode: str = "loop"
     start_mode: str = "auto"
+    trigger_button_mode: str = "one_shot"
     fixed_column_period_us: int = 20_000
     max_brightness: int = 128
     auto_start_after_upload: bool = True

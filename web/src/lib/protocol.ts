@@ -34,6 +34,7 @@ export type PlaybackConfig = {
   period_mode: "fixed" | "external" | string
   playback_mode: "once" | "loop" | "ping_pong" | string
   start_mode: "auto" | "trigger" | string
+  trigger_button_mode: "one_shot" | "hold" | "reset" | string
   fixed_column_period_us: number
   max_brightness: number
   auto_start_after_upload: boolean
@@ -45,6 +46,7 @@ export const defaultPlaybackConfig = (): PlaybackConfig => ({
   period_mode: "fixed",
   playback_mode: "loop",
   start_mode: "auto",
+  trigger_button_mode: "one_shot",
   fixed_column_period_us: 20_000,
   max_brightness: 128,
   auto_start_after_upload: true,
