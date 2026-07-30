@@ -178,9 +178,9 @@ export class PaintbarBle {
     c.addEventListener("characteristicvaluechanged", onAck)
     await c.startNotifications()
 
-    const waitForAck = () =>
+    const waitForAck = (timeoutMs = 3000) =>
       new Promise<void>((resolve, reject) => {
-        const tid = setTimeout(() => reject(new Error("Upload: timeout čekání na potvrzení")), 3000)
+        const tid = setTimeout(() => reject(new Error("Upload: timeout čekání na potvrzení")), timeoutMs)
         ackWaiter = () => {
           clearTimeout(tid)
           resolve()
@@ -211,7 +211,9 @@ export class PaintbarBle {
         await waitForAck()
       }
       await gattWrite(c, new Uint8Array([BitmapCommand.COMMIT]).buffer)
-      await waitForAck() // čeká na kAck po dokončení commit_upload() (zápis na flash)
+      // Commit dostává delší limit: deska potvrzuje hned po přijetí do RAM,
+      // ale zápis na flash může notifikaci zdržet.
+      await waitForAck(15000)
     } finally {
       c.removeEventListener("characteristicvaluechanged", onAck)
       this.notifyHandler = null

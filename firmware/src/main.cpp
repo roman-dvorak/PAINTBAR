@@ -49,6 +49,9 @@ void reset_config_to_defaults() {
   g_config.fixed_column_period_us = kDefaultColumnPeriodUs;
   g_config.max_brightness = kDefaultMaxBrightness;
   g_config.auto_start_after_upload = true;
+  g_config.solid_color_r = 0;
+  g_config.solid_color_g = 0;
+  g_config.solid_color_b = 0;
 }
 
 void rebuild_bitmap_raw_cache() {
@@ -99,8 +102,22 @@ String config_to_json() {
       break;
   }
   json += "\",";
-  json += "\"idle_display_mode\":\"" +
-          String(g_config.idle_display_mode == IdleDisplayMode::kBlack ? "black" : "edge") + "\",";
+  json += "\"idle_display_mode\":\"";
+  switch (g_config.idle_display_mode) {
+    case IdleDisplayMode::kBlack:
+      json += "black";
+      break;
+    case IdleDisplayMode::kSolidColor:
+      json += "solid";
+      break;
+    case IdleDisplayMode::kEdgeColumn:
+      json += "edge";
+      break;
+  }
+  json += "\",";
+  json += "\"solid_color_r\":" + String(g_config.solid_color_r) + ",";
+  json += "\"solid_color_g\":" + String(g_config.solid_color_g) + ",";
+  json += "\"solid_color_b\":" + String(g_config.solid_color_b) + ",";
   json += "\"fixed_column_period_us\":" + String(g_config.fixed_column_period_us) + ",";
   json += "\"max_brightness\":" + String(g_config.max_brightness) + ",";
   json += "\"auto_start_after_upload\":" + bool_to_json(g_config.auto_start_after_upload);
@@ -162,6 +179,29 @@ bool extract_bool(const String& json, const char* key, bool& out) {
     return true;
   }
   return false;
+}
+
+IdleDisplayMode parse_idle_display_mode(const String& text) {
+  if (text == "black") {
+    return IdleDisplayMode::kBlack;
+  }
+  if (text == "solid") {
+    return IdleDisplayMode::kSolidColor;
+  }
+  return IdleDisplayMode::kEdgeColumn;
+}
+
+void parse_solid_color(const String& json) {
+  uint32_t value = 0;
+  if (extract_unsigned(json, "solid_color_r", value)) {
+    g_config.solid_color_r = std::min<uint32_t>(value, 255);
+  }
+  if (extract_unsigned(json, "solid_color_g", value)) {
+    g_config.solid_color_g = std::min<uint32_t>(value, 255);
+  }
+  if (extract_unsigned(json, "solid_color_b", value)) {
+    g_config.solid_color_b = std::min<uint32_t>(value, 255);
+  }
 }
 
 bool sanitize_config() {
@@ -250,8 +290,9 @@ bool load_config_from_flash() {
     }
   }
   if (extract_string(json, "idle_display_mode", text)) {
-    g_config.idle_display_mode = text == "black" ? IdleDisplayMode::kBlack : IdleDisplayMode::kEdgeColumn;
+    g_config.idle_display_mode = parse_idle_display_mode(text);
   }
+  parse_solid_color(json);
   if (extract_bool(json, "auto_start_after_upload", flag)) {
     g_config.auto_start_after_upload = flag;
   }
@@ -341,12 +382,34 @@ void apply_brightness() {
 void show_startup_test() {
   clear_leds();
 
-  const CRGB flash_colors[] = {CRGB::Red, CRGB::Green, CRGB::Blue};
-  for (const CRGB& color : flash_colors) {
-    fill_solid(leds, kMaxLedCount, color);
+  // Three gentle blinks of just the two ends of the strip plus the board's
+  // own user LED, at ~10 % brightness.
+  constexpr uint8_t kStartupBrightness = 25;  // ~10 % of 255
+  constexpr uint8_t kStartupBlinks = 3;
+  constexpr uint16_t kStartupOnMs = 80;
+  constexpr uint16_t kStartupOffMs = 120;
+
+  const uint16_t last = g_config.led_count > 0 ? g_config.led_count - 1 : 0;
+  const uint8_t previous_brightness = FastLED.getBrightness();
+  FastLED.setBrightness(kStartupBrightness);
+
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  for (uint8_t i = 0; i < kStartupBlinks; ++i) {
+    leds[0] = CRGB::White;
+    leds[last] = CRGB::White;
     FastLED.show();
+    digitalWrite(LED_BUILTIN, LOW);  // XIAO's user LED is active low
+    delay(kStartupOnMs);
+
+    leds[0] = CRGB::Black;
+    leds[last] = CRGB::Black;
+    FastLED.show();
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(kStartupOffMs);
   }
 
+  FastLED.setBrightness(previous_brightness);
   clear_leds();
 }
 
@@ -364,6 +427,27 @@ void apply_column(uint16_t column) {
     leds[y] = CRGB::Black;
   }
   FastLED.show();
+}
+
+void apply_solid_color() {
+  fill_solid(leds, kMaxLedCount,
+             CRGB(g_config.solid_color_r, g_config.solid_color_g, g_config.solid_color_b));
+  FastLED.show();
+}
+
+// What the strip shows when playback is not running.
+void apply_idle_display(uint16_t column) {
+  switch (g_config.idle_display_mode) {
+    case IdleDisplayMode::kBlack:
+      clear_leds();
+      break;
+    case IdleDisplayMode::kSolidColor:
+      apply_solid_color();
+      break;
+    case IdleDisplayMode::kEdgeColumn:
+      apply_column(column);
+      break;
+  }
 }
 
 uint32_t effective_column_period_us() {
@@ -398,11 +482,7 @@ void advance_column() {
   if (g_config.playback_mode == PlaybackMode::kOnce) {
     if (g_status.current_column + 1 >= g_config.column_count) {
       g_status.current_column = g_config.column_count - 1;
-      if (g_config.idle_display_mode == IdleDisplayMode::kBlack) {
-        clear_leds();
-      } else {
-        apply_column(g_status.current_column);
-      }
+      apply_idle_display(g_status.current_column);
       stop_playback();
       return;
     }
@@ -561,7 +641,18 @@ void commit_upload() {
   g_status.upload_in_progress = false;
   g_upload_buffer.clear();
   g_upload_expected_bytes = 0;
+  if (g_config.idle_display_mode == IdleDisplayMode::kSolidColor) {
+    g_config.idle_display_mode = IdleDisplayMode::kEdgeColumn;
+  }
   rebuild_bitmap_raw_cache();
+
+  // Acknowledge as soon as the bitmap is live in RAM. Persisting it to LittleFS
+  // takes well over the client's ack timeout for a full-size frame, so the
+  // flash writes and playback restart have to happen after the notify.
+  g_config_char->setValue(to_std_string(config_to_json()));
+  send_bitmap_ack(BitmapCommand::kAck, 2);
+  publish_status();
+
   save_config_to_flash();
   save_bitmap_to_flash();
   reset_playback();
@@ -570,10 +661,6 @@ void commit_upload() {
   } else {
     apply_column(0);
   }
-
-  g_config_char->setValue(to_std_string(config_to_json()));
-  send_bitmap_ack(BitmapCommand::kAck, 2);
-  publish_status();
 }
 
 void start_column_preview(uint16_t column, uint16_t total_bytes) {
@@ -705,9 +792,9 @@ class ConfigCallbacks : public NimBLECharacteristicCallbacks {
       }
     }
     if (extract_string(json, "idle_display_mode", text)) {
-      g_config.idle_display_mode =
-          text == "black" ? IdleDisplayMode::kBlack : IdleDisplayMode::kEdgeColumn;
+      g_config.idle_display_mode = parse_idle_display_mode(text);
     }
+    parse_solid_color(json);
     if (extract_bool(json, "auto_start_after_upload", flag)) {
       g_config.auto_start_after_upload = flag;
     }
@@ -733,6 +820,11 @@ class ControlCallbacks : public NimBLECharacteristicCallbacks {
 
     switch (static_cast<ControlCommand>(value[0])) {
       case ControlCommand::kPlay:
+        if (g_config.idle_display_mode == IdleDisplayMode::kSolidColor) {
+          g_config.idle_display_mode = IdleDisplayMode::kEdgeColumn;
+          save_config_to_flash();
+          g_config_char->setValue(to_std_string(config_to_json()));
+        }
         start_playback();
         break;
       case ControlCommand::kStop:
@@ -754,11 +846,16 @@ class ControlCallbacks : public NimBLECharacteristicCallbacks {
           break;
         }
         stop_playback();
-        fill_solid(
-            leds, kMaxLedCount,
-            CRGB(static_cast<uint8_t>(value[1]), static_cast<uint8_t>(value[2]),
-                 static_cast<uint8_t>(value[3])));
-        FastLED.show();
+        g_config.solid_color_r = static_cast<uint8_t>(value[1]);
+        g_config.solid_color_g = static_cast<uint8_t>(value[2]);
+        g_config.solid_color_b = static_cast<uint8_t>(value[3]);
+        // Remember it as the idle state so a reboot restores the same colour
+        // instead of falling back to the bitmap's edge column.
+        g_config.idle_display_mode = IdleDisplayMode::kSolidColor;
+        apply_solid_color();
+        save_config_to_flash();
+        g_config_char->setValue(to_std_string(config_to_json()));
+        publish_status();
         break;
       case ControlCommand::kStatus:
         break;
@@ -932,12 +1029,13 @@ void setup() {
 
   show_startup_test();
 
-  if (g_config.start_mode == StartMode::kAuto) {
+  // A remembered solid colour is the last thing the user asked for, so it wins
+  // over auto-start; otherwise nothing would be visible of it after a reboot.
+  if (g_config.start_mode == StartMode::kAuto &&
+      g_config.idle_display_mode != IdleDisplayMode::kSolidColor) {
     start_playback();
-  } else if (g_config.idle_display_mode == IdleDisplayMode::kBlack) {
-    clear_leds();
   } else {
-    apply_column(0);
+    apply_idle_display(0);
   }
 }
 

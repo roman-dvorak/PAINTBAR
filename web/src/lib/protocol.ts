@@ -38,7 +38,10 @@ export type PlaybackConfig = {
   playback_mode: "once" | "loop" | "ping_pong" | string
   start_mode: "auto" | "trigger" | string
   trigger_button_mode: "one_shot" | "hold" | "reset" | string
-  idle_display_mode: "black" | "edge" | string
+  idle_display_mode: "black" | "edge" | "solid" | string
+  solid_color_r: number
+  solid_color_g: number
+  solid_color_b: number
   fixed_column_period_us: number
   max_brightness: number
   auto_start_after_upload: boolean
@@ -52,6 +55,9 @@ export const defaultPlaybackConfig = (): PlaybackConfig => ({
   start_mode: "auto",
   trigger_button_mode: "one_shot",
   idle_display_mode: "edge",
+  solid_color_r: 0,
+  solid_color_g: 0,
+  solid_color_b: 0,
   fixed_column_period_us: 20_000,
   max_brightness: 128,
   auto_start_after_upload: true,

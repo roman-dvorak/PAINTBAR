@@ -28,7 +28,12 @@ function useFrame() {
   return { ref, ver: n, refresh }
 }
 
-export default function App() {
+export default const hex2 = (v: number) => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, "0")
+
+const solidColorHex = (c: Partial<PlaybackConfig>) =>
+  "#" + hex2(c.solid_color_r ?? 0) + hex2(c.solid_color_g ?? 0) + hex2(c.solid_color_b ?? 0)
+
+function App() {
   const { ref: fr, ver, refresh: bump } = useFrame()
   const ble = useRef(new PaintbarBle())
   const [log, setLog] = useState<string[]>([])
@@ -123,6 +128,9 @@ export default function App() {
       start_mode: startM,
       trigger_button_mode: triggerButtonMode,
       idle_display_mode: idleDisplayMode,
+      solid_color_r: parseInt(solidColor.slice(1, 3), 16),
+      solid_color_g: parseInt(solidColor.slice(3, 5), 16),
+      solid_color_b: parseInt(solidColor.slice(5, 7), 16),
       fixed_column_period_us: period,
       max_brightness: Math.round((brightnessPct / 100) * 255),
       auto_start_after_upload: auto,
@@ -152,6 +160,7 @@ export default function App() {
     startM,
     triggerButtonMode,
     idleDisplayMode,
+    solidColor,
     connected,
   ])
 
@@ -188,6 +197,7 @@ export default function App() {
         setStartM(c.start_mode)
         setTriggerButtonMode(c.trigger_button_mode ?? "one_shot")
         setIdleDisplayMode(c.idle_display_mode ?? "edge")
+                  setSolidColor(solidColorHex(c))
         fr.current.resize(c.column_count, c.led_count)
         bump()
       }
@@ -304,6 +314,7 @@ export default function App() {
             <select value={idleDisplayMode} onChange={(e) => setIdleDisplayMode(e.target.value)}>
               <option value="edge">první/poslední sloupec</option>
               <option value="black">tma</option>
+              <option value="solid">poslední barva</option>
             </select>
           </div>
           <p className="app__muted">
@@ -347,6 +358,7 @@ export default function App() {
                   setStartM(c.start_mode)
                   setTriggerButtonMode(c.trigger_button_mode ?? "one_shot")
                   setIdleDisplayMode(c.idle_display_mode ?? "edge")
+                  setSolidColor(solidColorHex(c))
                   fr.current.resize(c.column_count, c.led_count)
                   bump()
                   initializedRef.current = true
@@ -405,6 +417,7 @@ export default function App() {
                 setStartM(c.start_mode)
                 setTriggerButtonMode(c.trigger_button_mode ?? "one_shot")
                 setIdleDisplayMode(c.idle_display_mode ?? "edge")
+                  setSolidColor(solidColorHex(c))
                 const got = await ble.current.downloadBitmap(c.column_count, c.led_count, onProgress)
                 fr.current = got
                 bump()
@@ -441,7 +454,7 @@ export default function App() {
             </button>
           </div>
 
-          <h2>Test barvy</h2>
+          <h2>Nastavit barvu</h2>
           <div className="btnrow">
             <input
               type="color"
@@ -458,6 +471,9 @@ export default function App() {
                   const g = parseInt(solidColor.slice(3, 5), 16)
                   const b = parseInt(solidColor.slice(5, 7), 16)
                   await ble.current.setSolidColor(r, g, b)
+                  // Deska si barvu uloží jako klidový stav; srovnej UI, aby ji
+                  // živý zápis konfigurace hned nepřepsal zpátky na "edge".
+                  setIdleDisplayMode("solid")
                 })
               }
             >
@@ -584,6 +600,7 @@ export default function App() {
               setStartM(cfg.start_mode)
               setTriggerButtonMode(cfg.trigger_button_mode ?? "one_shot")
               setIdleDisplayMode(cfg.idle_display_mode ?? "edge")
+              setSolidColor(solidColorHex(cfg))
               setActiveCol(0)
               bump()
               initializedRef.current = true

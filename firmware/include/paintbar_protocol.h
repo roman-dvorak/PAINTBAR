@@ -29,6 +29,7 @@ enum class TriggerButtonMode : uint8_t {
 enum class IdleDisplayMode : uint8_t {
   kBlack = 0,
   kEdgeColumn = 1,
+  kSolidColor = 2,
 };
 
 enum class BitmapCommand : uint8_t {
@@ -67,6 +68,10 @@ struct PlaybackConfig {
   uint32_t fixed_column_period_us = 20000;
   uint8_t max_brightness = 128;
   bool auto_start_after_upload = true;
+  // Last solid colour set over BLE; shown when idle_display_mode is kSolidColor.
+  uint8_t solid_color_r = 0;
+  uint8_t solid_color_g = 0;
+  uint8_t solid_color_b = 0;
 };
 
 struct RuntimeStatus {
