@@ -382,31 +382,26 @@ void apply_brightness() {
 void show_startup_test() {
   clear_leds();
 
-  // Three gentle blinks of just the two ends of the strip plus the board's
-  // own user LED, at ~10 % brightness.
-  constexpr uint8_t kStartupBrightness = 25;  // ~10 % of 255
-  constexpr uint8_t kStartupBlinks = 3;
-  constexpr uint16_t kStartupOnMs = 80;
-  constexpr uint16_t kStartupOffMs = 120;
+  // One quick sweep of a short red dot along the whole strip: the centre LED
+  // at 50 % brightness, its two neighbours at 25 %, then off.
+  const CRGB kStartupCentre(128, 0, 0);  // 50 %
+  const CRGB kStartupEdge(64, 0, 0);     // 25 %
+  // Pushing a full strip takes ~30 us per LED, so the refresh itself sets the
+  // pace; the dot advances several LEDs per frame instead of waiting.
+  constexpr uint8_t kStartupStride = 4;
 
-  const uint16_t last = g_config.led_count > 0 ? g_config.led_count - 1 : 0;
+  const int32_t count = g_config.led_count;
   const uint8_t previous_brightness = FastLED.getBrightness();
-  FastLED.setBrightness(kStartupBrightness);
+  FastLED.setBrightness(255);
 
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  for (uint8_t i = 0; i < kStartupBlinks; ++i) {
-    leds[0] = CRGB::White;
-    leds[last] = CRGB::White;
+  // Centre runs from just before the start to just past the end so the dot
+  // slides fully on and off the strip.
+  for (int32_t centre = -1; centre <= count; centre += kStartupStride) {
+    fill_solid(leds, kMaxLedCount, CRGB::Black);
+    if (centre - 1 >= 0 && centre - 1 < count) leds[centre - 1] = kStartupEdge;
+    if (centre >= 0 && centre < count) leds[centre] = kStartupCentre;
+    if (centre + 1 >= 0 && centre + 1 < count) leds[centre + 1] = kStartupEdge;
     FastLED.show();
-    digitalWrite(LED_BUILTIN, LOW);  // XIAO's user LED is active low
-    delay(kStartupOnMs);
-
-    leds[0] = CRGB::Black;
-    leds[last] = CRGB::Black;
-    FastLED.show();
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(kStartupOffMs);
   }
 
   FastLED.setBrightness(previous_brightness);
